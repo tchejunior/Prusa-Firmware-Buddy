@@ -114,6 +114,8 @@ enum class PhasesLoadUnload : PhaseUnderlyingType {
     MMU_HWTestExec,
     MMU_HWTestDisplay,
     MMU_ErrHwTestFailed,
+    MMURunoutClear,
+    MMURunoutError,
 #endif
 
     _cnt,

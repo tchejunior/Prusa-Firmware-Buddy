@@ -276,6 +276,9 @@ LoadUnloadMode Pause::get_load_unload_mode() {
 }
 
 bool Pause::should_park() {
+    if (settings.mmu_runout && load_type == LoadType::filament_change) {
+        return true; // Power-panic recovery can have a saved slot but no selected tool.
+    }
     auto virtual_tool = stdext::get_optional<VirtualToolIndex>(VirtualToolIndex::currently_selected());
     bool is_already_parked = !virtual_tool.has_value();
     if (is_already_parked) {
@@ -945,13 +948,54 @@ void Pause::mmu_load_process([[maybe_unused]] Response response) {
         return;
     }
 
-    MMU2::mmu2.load_filament(settings.mmu_filament_to_load);
-    MMU2::mmu2.load_filament_to_nozzle(settings.mmu_filament_to_load);
+    if (!MMU2::mmu2.load_filament(settings.mmu_filament_to_load)
+        || !MMU2::mmu2.load_filament_to_nozzle(settings.mmu_filament_to_load, FSensors_instance().mmu_runout_slot().has_value())
+        || planner.draining()
+        || MMU2::mmu2.get_current_tool() != settings.mmu_filament_to_load
+        || !FSensors_instance().has_filament_surely(LogicalFilamentSensor::extruder)) {
+        set(LoadState::mmu_load_start);
+        return;
+    }
+    FSensors_instance().finish_mmu_runout();
 
     set(LoadState::color_correct_ask);
 }
 
-void Pause::mmu_unload_start_process([[maybe_unused]] Response response) {
+void Pause::mmu_unload_start_process(Response response) {
+    if (settings.mmu_runout && load_type == LoadType::filament_change) {
+        if (response == Response::Abort) {
+            // A local Stop would return from M600 and could resume without
+            // filament. Abort the print itself before leaving this workflow.
+            marlin_server::print_abort();
+            planner.quick_stop();
+            set(LoadState::stop);
+            return;
+        }
+        if (getPhase() == PhasesLoadUnload::MMURunoutError && response != Response::Retry) {
+            return;
+        }
+        const auto slot = FSensors_instance().mmu_runout_slot();
+        if (!slot || !FSensors_instance().no_filament_surely(LogicalFilamentSensor::extruder)
+            || !FSensors_instance().is_working(LogicalFilamentSensor::side)) {
+            // A tool change/manual M600 can arrive while the tube still holds
+            // filament. Never move the selector or assume a faulty ADC is empty.
+            setPhase(PhasesLoadUnload::MMURunoutClear);
+            return;
+        }
+        // If intervention was necessary, require acknowledgement after the path
+        // has been cleared. Natural ADC runout goes straight to loading.
+        if (getPhase() == PhasesLoadUnload::MMURunoutClear && response != Response::Continue) {
+            return;
+        }
+        settings.mmu_filament_to_load = *slot;
+        if (!MMU2::mmu2.prepare_runout_reload(*slot)) {
+            setPhase(PhasesLoadUnload::MMURunoutError);
+            return;
+        }
+        settings.mmu_runout = false;
+        set(LoadState::load_start);
+        return;
+    }
     if (load_type == LoadType::unload) {
         MMU2::mmu2.unload();
         set(LoadState::_finished);
@@ -1545,7 +1589,7 @@ void Pause::park_nozzle_and_notify() {
     const float target_Z = park.resolve_z(current_position.z);
 
     // Initial retract before move to filament change position
-    if (!thermalManager.tooColdToExtrude(active_extruder)) {
+    if (!settings.mmu_runout && !thermalManager.tooColdToExtrude(active_extruder)) {
         mapi::retract_to(-settings.retract, standard_feedrates::extruder(standard_feedrates::Extruder::retract, FilamentType::for_current_tool_heuristic()));
     }
 
@@ -1969,6 +2013,9 @@ Pause::FSM_HolderLoadUnload::~FSM_HolderLoadUnload() {
 }
 
 void Pause::FSM_HolderLoadUnload::restore_temperature_and_unpark() {
+    if (planner.draining() || marlin_server::aborting_or_aborted()) {
+        return;
+    }
     if (!marlin_client::is_printing() && !marlin_client::is_paused()) {
         return;
     }
