@@ -1,0 +1,3 @@
+#pragma once
+#define PRINTER_IS_PRUSA_COREONE()  1
+#define PRINTER_IS_PRUSA_COREONEL() 0
