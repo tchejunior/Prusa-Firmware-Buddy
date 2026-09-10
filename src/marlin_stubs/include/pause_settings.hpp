@@ -35,6 +35,7 @@ public:
     void SetResumePoint(const xyze_pos_t &resume_point);
     void SetMmuFilamentToLoad(uint8_t index);
     void SetResumeNozzleTemperature(int16_t temperature);
+    void SetMmuRunout(bool value) { mmu_runout = value; }
 
     [[deprecated("Use the ToolIndex overload")]]
     void SetExtruder(uint8_t target) { target_extruder = target; }
@@ -66,6 +67,7 @@ private:
     xyze_pos_t resume_pos;
 
     uint8_t mmu_filament_to_load = 0;
+    bool mmu_runout = false;
     uint8_t target_extruder;
 
     // Target to restore after loading drops it to the new filament's default; empty = leave as-is.

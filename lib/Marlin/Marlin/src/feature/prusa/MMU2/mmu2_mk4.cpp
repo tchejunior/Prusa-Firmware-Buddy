@@ -1,4 +1,5 @@
 #include "mmu2_mk4.h"
+#include "../../../../../../../src/module/raii/include/raii/scope_guard.hpp"
 
 #include <option/has_mmu2.h>
 
@@ -27,6 +28,9 @@
 
 #ifndef UNITTEST
     // because it brings in whole Marlin and the unit tests commit suicide ...
+    #include <feature/filament_sensor/filament_sensors_handler.hpp>
+    #include <gcode/gcode.h>
+    #include <option/filament_sensor.h>
     #include "../../../module/prusa/spool_join.hpp"
     #include "../../../../../../../src/common/mapi/cold_extrude.hpp"
     #include <metric.h>
@@ -327,6 +331,40 @@ bool __attribute__((noinline)) MMU2::WriteRegister(uint8_t address, uint16_t dat
     return true;
 }
 
+bool MMU2::prepare_runout_reload(uint8_t slot) {
+    if (slot >= 5 || State() != xState::Active || WhereIsFilament() != FilamentState::NOT_PRESENT) {
+        return false;
+    }
+    FSensorBlockRunout blockRunout;
+    // MMU3 register 0x07 is its FilamentLoadState, NOT the printer's
+    // FilamentState enum. Preserve the MMU's active slot; it must match ours.
+    const auto accepted = [&](RequestMsgCodes code, Register reg) {
+        return State() == xState::Active && !planner_draining()
+            && logic.rsp.request.code == code && logic.rsp.request.value == static_cast<uint8_t>(reg)
+            && logic.rsp.paramCode == ResponseMsgParamCodes::Accepted;
+    };
+    logic.ReadRegister(static_cast<uint8_t>(Register::Set_Get_Selector_Slot));
+    if (!manage_response(false, false) || !accepted(RequestMsgCodes::Read, Register::Set_Get_Selector_Slot) || logic.rsp.paramValue != slot) {
+        return false;
+    }
+    const uint16_t state = FindaDetectsFilament() ? 2 /* InSelector */ : 1 /* AtPulley */;
+    logic.WriteRegister(static_cast<uint8_t>(Register::Filament_State), state);
+    if (!manage_response(false, false) || !accepted(RequestMsgCodes::Write, Register::Filament_State)) {
+        return false;
+    }
+    logic.ReadRegister(static_cast<uint8_t>(Register::Filament_State));
+    if (!manage_response(false, false) || !accepted(RequestMsgCodes::Read, Register::Filament_State) || logic.rsp.paramValue != state
+        || WhereIsFilament() != FilamentState::NOT_PRESENT || planner_draining()) {
+        return false;
+    }
+    extruder = MMU2_NO_TOOL;
+    tool_change_extruder = MMU2_NO_TOOL;
+    // There was no unload to measure. Use the full normal feed distance and
+    // retain obstruction detection while pushing the remnant into the hotend.
+    unloadEPosOnFSOff = nominalEMotorFSOffReg;
+    return true;
+}
+
 void MMU2::mmu_loop() {
     // We only leave this method if the current command was successfully completed - that's the Marlin's way of blocking operation
     // Atomic compare_exchange would have been the most appropriate solution here, but this gets called only in Marlin's task,
@@ -372,6 +410,13 @@ void MMU2::mmu_loop() {}
 #endif
 
 void MMU2::CheckFINDARunout() {
+#ifndef UNITTEST
+    #if FILAMENT_SENSOR_IS_ADC()
+    // The sensor handler owns this policy, including the first FINDA update
+    // before it has had a chance to latch a pending runout.
+    return;
+    #endif
+#endif
     // Check for FINDA filament runout
     if (!FindaDetectsFilament() && WhereIsFilament() == FilamentState::IN_NOZZLE) { // Check if we have filament runout detected from sensors
         SERIAL_ECHOLNPGM("FINDA filament runout!");
@@ -496,7 +541,7 @@ bool MMU2::FeedWithEStallDetection() {
     // To overcome this, a few tricks have been applied:
     // - lower detection threshold - may also allow the loadcell to "see" when the filament hits the main plate plastic part (when the forces are much lower)
     // - pick a specific speed which is a bit different than the sampling rate
-    static constexpr float feedRate = MMU2_FEED_RATE;
+    const float feedRate = runout_reload_ ? 3.F : MMU2_FEED_RATE;
 
     // ram the filament as deep as possible while checking for any obstacles
 
@@ -679,6 +724,22 @@ void MMU2::ToolChangeCommon(uint8_t slot) {
 }
 
 bool MMU2::tool_change(uint8_t slot) {
+#ifndef UNITTEST
+    // Finish pending runout before the selector can move. The M600 path asks
+    // for manual clearing if the loose tail has not reached the ADC yet.
+    if (FSensors_instance().mmu_runout_slot()) {
+        gcode.process_subcommands_now_P(PSTR("M600"));
+        if (FSensors_instance().mmu_runout_slot() || planner_draining()) {
+            return false;
+        }
+        if (slot != extruder) {
+            UnloadObeyAutoRetracted();
+            if (planner_draining()) {
+                return false;
+            }
+        }
+    }
+#endif
     if (!WaitForMMUReady()) {
         return false;
     }
@@ -702,6 +763,14 @@ bool MMU2::tool_change(uint8_t slot) {
 }
 
 bool MMU2::tool_change_full(uint8_t slot) {
+#ifndef UNITTEST
+    if (FSensors_instance().mmu_runout_slot()) {
+        gcode.process_subcommands_now_P(PSTR("M600"));
+        if (FSensors_instance().mmu_runout_slot() || planner_draining()) {
+            return false;
+        }
+    }
+#endif
     if (!WaitForMMUReady()) {
         return false;
     }
@@ -957,9 +1026,33 @@ bool MMU2::load_filament(uint8_t slot) {
     return true;
 }
 
-bool MMU2::load_filament_to_nozzle(uint8_t slot) {
+bool MMU2::load_filament_to_nozzle(uint8_t slot, bool after_runout) {
     if (!WaitForMMUReady()) {
         return false;
+    }
+
+    const auto original_pulley_feedrate = logic.PulleySlowFeedRate();
+    ScopeGuard restore_runout_profile = [&] {
+        runout_reload_ = false;
+        if (after_runout) {
+            // Reconnect resends the cached configuration if power loss prevents
+            // restoring the MMU's temporary slow feed rate right now.
+            logic.PlanPulleySlowFeedRate(original_pulley_feedrate);
+            if (State() == xState::Active && !planner_draining()) {
+                WriteRegister(static_cast<uint8_t>(Register::Pulley_Slow_Feedrate), original_pulley_feedrate);
+            }
+        }
+    };
+    if (after_runout) {
+        const auto reg = static_cast<uint8_t>(Register::Pulley_Slow_Feedrate);
+        if (State() != xState::Active || planner_draining()
+            || !WriteRegister(reg, 3)
+            || State() != xState::Active || planner_draining()
+            || logic.rsp.request.code != RequestMsgCodes::Write || logic.rsp.request.value != reg
+            || logic.rsp.paramCode != ResponseMsgParamCodes::Accepted) {
+            return false;
+        }
+        runout_reload_ = true;
     }
 
     FullScreenMsgLoad(slot);
@@ -1358,7 +1451,9 @@ void MMU2::execute_extruder_sequence(const E_Step *sequence, uint8_t stepCount, 
 
     // Plan the moves
     for (const E_Step *step = sequence, *end = sequence + stepCount; step != end; step++) {
-        extruder_move(pgm_read_float(&(step->extrude)), pgm_read_float(&(step->feedRate)));
+        const float distance = pgm_read_float(&(step->extrude));
+        const float feedrate = pgm_read_float(&(step->feedRate));
+        extruder_move(distance, runout_reload_ && distance > 0 ? std::min(feedrate, 3.F) : feedrate);
     }
 
     if (should_report_progress) {

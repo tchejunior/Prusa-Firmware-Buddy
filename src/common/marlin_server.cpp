@@ -1660,6 +1660,7 @@ void print_abort(void) {
     case State::MediaErrorRecovery_BufferData:
     case State::Resuming_BufferData:
     case State::Resuming_Reheating:
+    case State::Resuming_ExecutingGCodeInterrupt:
     case State::Finishing_WaitIdle:
 #if HAS_TOOL_CRASH_RECOVERY()
     case State::CrashRecovery_Tool_Pickup:

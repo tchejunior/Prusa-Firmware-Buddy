@@ -11,6 +11,10 @@
 #include <option/has_remote_bed.h>
 #include <option/has_toolchanger.h>
 #include <option/has_indx.h>
+#include <option/has_mmu2.h>
+#if HAS_MMU2()
+    #include <feature/filament_sensor/filament_sensors_handler.hpp>
+#endif
 #include <option/has_chamber_api.h>
 #include <option/has_nozzle_cleaner.h>
 #include <option/has_motor_current_profiles.h>
@@ -292,6 +296,12 @@ void resume_print() {
     }
 
     const bool auto_recover = [] {
+#if HAS_MMU2()
+        // A loose tail or interrupted replacement needs an explicit recovery.
+        if (config_store().mmu_runout_recovery_slot.get() < 5) {
+            return false;
+        }
+#endif
         if (state_buf.print.odometer_e_start >= Odometer_s::instance().get_extruded_all()) {
             // nothing has been extruded on the bed so far, it's safe to auto-resume irregardless of temp
             return true;
@@ -319,6 +329,11 @@ void resume_print() {
         .offset = state_buf.crash.sdpos,
     };
     marlin_server::powerpanic_resume(runtime_state.media_SFN_path, gcode_pos, auto_recover);
+#if HAS_MMU2()
+    if (config_store().mmu2_enabled.get()) {
+        FSensors_instance().restore_mmu_runout(config_store().mmu_runout_recovery_slot.get());
+    }
+#endif
 }
 
 void resume_continue() {

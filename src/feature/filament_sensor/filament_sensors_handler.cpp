@@ -12,6 +12,12 @@
 #include <option/has_crash_detection.h>
 #include <option/has_selftest.h>
 #include <option/has_mmu2.h>
+#include <option/filament_sensor.h>
+#include <sound.hpp>
+#include <option/has_power_panic.h>
+#if HAS_POWER_PANIC()
+    #include <power_panic.hpp>
+#endif
 
 #include <option/has_toolchanger.h>
 #if HAS_TOOLCHANGER()
@@ -204,7 +210,53 @@ void FilamentSensors::reconfigure_sensors_if_needed(bool force) {
     ls[LFS::closest_to_nozzle_independent] = (extruder_fs && extruder_fs_independent) ? extruder_fs : side_fs;
 }
 
+void FilamentSensors::finish_mmu_runout() {
+    mmu_runout_.reset();
+    ClrM600Sent();
+#if HAS_MMU2()
+    config_store().mmu_runout_recovery_slot.set(255);
+#endif
+}
+
 void FilamentSensors::process_events() {
+#if HAS_MMU2() && FILAMENT_SENSOR_IS_ADC()
+    // is_printing() also includes power-panic awaiting/resume states, whose
+    // coordinates and temperatures are not ready for a filament change yet.
+    bool can_run = !isEvLocked() && !m600_sent
+        && marlin_vars().print_state == marlin_server::State::Printing;
+    #if HAS_CRASH_DETECTION()
+    can_run = can_run && crash_s.get_state() == Crash_s::PRINTING;
+    #endif
+    const auto finda = sensor(LogicalFilamentSensor::side);
+    const auto action = mmu_runout_.step(has_mmu,
+        marlin_server::is_printing() && !marlin_server::aborting_or_aborted() && !marlin_server::finishing_or_finished(),
+        can_run, finda && finda->last_event() == IFSensor::Event::filament_removed,
+        sensor_state(LogicalFilamentSensor::side), sensor_state(LogicalFilamentSensor::extruder), mmu2.get_current_tool());
+    if (const auto slot = mmu_runout_.slot()) {
+        if (config_store().mmu_runout_recovery_slot.get() != *slot) {
+            config_store().mmu_runout_recovery_slot.set(*slot);
+        }
+    } else if (!marlin_server::is_printing()
+    #if HAS_POWER_PANIC()
+        && !power_panic::state_stored()
+    #endif
+    ) {
+        if (config_store().mmu_runout_recovery_slot.get() != 255) {
+            config_store().mmu_runout_recovery_slot.set(255);
+        }
+    }
+    if (action == MmuRunout::Action::warn) {
+        sound::play(::SoundType::single_beep);
+    } else if (action == MmuRunout::Action::pause) {
+        m600_sent = true;
+        sound::play(::SoundType::single_beep);
+        marlin_server::gcode_interrupt(GCodeLiteral { .gcode = "M600" });
+    }
+    // This state owns both runout sensors until recovery, including FINDA flicker.
+    if (mmu_runout_.slot()) {
+        return;
+    }
+#endif
     if (isEvLocked()) {
         return;
     }

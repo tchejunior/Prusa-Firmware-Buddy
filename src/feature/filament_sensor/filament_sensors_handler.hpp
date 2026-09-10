@@ -16,6 +16,7 @@
 #include <tool_index.hpp>
 
 #include <inplace_function.hpp>
+#include "mmu_runout.hpp"
 
 /// Filament sensors manager
 /// All public functions are thread-safe
@@ -98,7 +99,16 @@ public:
     /// Periodically called from the marlin task
     void step();
 
+    /// Marlin task only: pending natural MMU runout, including while paused.
+    std::optional<uint8_t> mmu_runout_slot() const { return mmu_runout_.slot(); }
+    void finish_mmu_runout();
+    void restore_mmu_runout(uint8_t slot) {
+        mmu_runout_.restore(slot);
+        ClrM600Sent();
+    }
+
 private:
+    MmuRunout mmu_runout_;
     // The variables are made atomic so that one can read them from different threads and get somewhat valid values.
 
     void reconfigure_sensors_if_needed(bool force);
