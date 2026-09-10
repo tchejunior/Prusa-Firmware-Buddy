@@ -114,6 +114,16 @@ void XBuddyExtension::step() {
 
         switch (filtration_backend) {
 
+        case ChamberFiltrationBackend::xbe_custom_filter: {
+            // Filtration cannot exhaust heat in this arrangement. Manual
+            // filtration PWM also overrides Auto (including during selftest).
+            const auto pwm = chamber_cooling.compute_custom_filtration_step(*temp, target_temp, cooling_fans_target_pwm_, filtration_fan_target_pwm_, max_auto_pwm, filtration_pwm);
+            cooling_fans_actual_pwm_ = pwm.cooling;
+            filtration_fan_actual_pwm_ = pwm.filtration;
+            can_auto_cool_ = (cooling_fans_target_pwm_ == pwm_auto);
+            break;
+        }
+
         case ChamberFiltrationBackend::xbe_official_filter:
             // The filtration fan does both filtration and cooling
             cooling_fans_actual_pwm_ = cooling_fans_target_pwm_.value_or(FanPWM { 0 });
@@ -262,10 +272,15 @@ bool XBuddyExtension::using_filtration_fan_instead_of_cooling_fans() const {
 
     case ChamberFiltrationBackend::none:
     case ChamberFiltrationBackend::xbe_filter_on_cooling_fans:
+    case ChamberFiltrationBackend::xbe_custom_filter:
         return false;
     }
 
     return false;
+}
+
+bool XBuddyExtension::using_custom_filtration() const {
+    return chamber_filtration().backend() == ChamberFiltrationBackend::xbe_custom_filter;
 }
 
 PWM255 XBuddyExtension::max_cooling_pwm() const {
