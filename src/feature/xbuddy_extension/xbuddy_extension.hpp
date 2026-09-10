@@ -88,6 +88,7 @@ public: // Fans
 
     /// \returns whether the fan 3 is connected/used and thus whether we should consider it in sensor info, selftest results and such
     bool using_filtration_fan_instead_of_cooling_fans() const;
+    bool using_custom_filtration() const;
 
     /// \returns maximum PWM that is used for cooling in non-emergency situations
     PWM255 max_cooling_pwm() const;

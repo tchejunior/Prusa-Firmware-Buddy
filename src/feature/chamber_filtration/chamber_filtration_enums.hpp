@@ -19,6 +19,9 @@ enum class ChamberFiltrationBackend : uint8_t {
 
     /// XBE Cooling fans are doing both cooling and filtration
     xbe_filter_on_cooling_fans = 3,
+
+    /// Rear fans exhaust heat; the dedicated filtration fan recirculates air.
+    xbe_custom_filter = 4,
 #endif
 };
 
