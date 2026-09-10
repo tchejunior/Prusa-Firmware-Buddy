@@ -59,7 +59,9 @@ try {
         $changed.Add(@{ Path = $path; Bytes = $bytes; Directory = $targetItem.PSIsContainer; Target = $target })
         Remove-Item -LiteralPath $path
         if ($targetItem.PSIsContainer) {
-            New-Item -ItemType Junction -Path $path -Target $target | Out-Null
+            # Never use a junction here. Directory.Delete on a junction has
+            # erased its target contents on some Windows configurations.
+            Copy-Item -LiteralPath $target -Destination $path -Recurse
         } else {
             Copy-Item -LiteralPath $target -Destination $path
         }
@@ -73,12 +75,11 @@ try {
         if ($entry.Directory -and (Test-Path -LiteralPath $entry.Path)) {
             $item = Get-Item -LiteralPath $entry.Path -Force
             if (!$entry.Path.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase) -or
-                !($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
-                [IO.Path]::GetFullPath([string]@($item.Target)[0]) -ne $entry.Target) {
-                throw "Refusing to remove an unexpected build junction: $($entry.Path)"
+                !$item.PSIsContainer -or
+                ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw "Refusing to remove an unexpected build directory: $($entry.Path)"
             }
-            # Remove the verified junction itself, never its target contents.
-            [IO.Directory]::Delete($entry.Path, $false)
+            Remove-Item -LiteralPath $entry.Path -Recurse
         }
         [IO.File]::WriteAllBytes($entry.Path, $entry.Bytes)
     }

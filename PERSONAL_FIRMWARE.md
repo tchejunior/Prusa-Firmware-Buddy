@@ -6,6 +6,11 @@ Changes are maintained at <https://github.com/tchejunior/Prusa-Firmware-Buddy>,
 on `codex/personal-coreone-6.8.1`. The earlier 6.10.1 branch is preserved as
 `codex/personal-coreone`. No upstream pull request is required.
 
+The port includes Prusa's small fix `91039e33d` for reheating before final
+priming/retraction after a long filament-change prompt. The independent port
+review identified this as necessary to preserve safe recovery behavior from
+the newer base. No changes to normal printing loadcell detection were ported.
+
 ## MMU runout
 
 With an enabled MMU and ADC extruder filament sensor:
