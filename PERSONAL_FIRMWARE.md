@@ -1,9 +1,10 @@
 # Personal CORE One firmware
 
-This branch starts at upstream `v6.10.1` (`1ce23f33e`). It builds the COREONE
+This branch starts at upstream `v6.8.1` (`026c2ee1f`). It builds the COREONE
 target from that source tree; it is not an official Prusa CORE One release.
 Changes are maintained at <https://github.com/tchejunior/Prusa-Firmware-Buddy>,
-on `codex/personal-coreone`. No upstream pull request is required.
+on `codex/personal-coreone-6.8.1`. The earlier 6.10.1 branch is preserved as
+`codex/personal-coreone`. No upstream pull request is required.
 
 ## MMU runout
 
@@ -77,7 +78,7 @@ small personal commit series onto a new branch. Start with a clean worktree:
 
 ```powershell
 git fetch upstream --tags
-git log --oneline v6.10.1..codex/personal-coreone
+git log --oneline v6.8.1..codex/personal-coreone-6.8.1
 # Replace NEW_TAG with the chosen compatible upstream release tag.
 git switch -c codex/coreone-NEW_TAG NEW_TAG
 # Apply the personal commits shown above, oldest first:
@@ -95,23 +96,24 @@ hardware checks. There is no need to force-push or open a PR against Prusa.
 
 ### Prusa Connect compatibility investigation
 
-Connect rejected this custom build first as not supporting binary G-code, then
+Connect rejected the earlier 6.10.1 custom build as not supporting binary G-code, then
 as not supporting file transfer even with plain G-code. The firmware contains
 both implementations. As a diagnostic compatibility change, builds whose suffix
-starts with `-custom` now report the actual base version (`6.10.1`) to Connect.
-The printer UI and crash identification keep `6.10.1-custom+16383`; upstream
+starts with `-custom` now report the actual base version (`6.8.1`) to Connect.
+The printer UI and crash identification keep `6.8.1-custom+<build number>`; upstream
 release and prerelease builds keep their original Connect version reporting.
 
 This targets a suspected cloud version-classification problem. It is not a
-confirmed fix: after flashing, verify that Connect receives `6.10.1`, then test
+confirmed fix: after flashing, verify that Connect receives `6.8.1`, then test
 transfer to the printer with both `.gcode` and `.bgcode` (upload-only success is
 insufficient). If transfer is still rejected, investigate Connect's printer
 model/version support rather than claiming the firmware lacks file transfer.
 
-The diagnostic artifact is
-`build/personal-artifacts/connect-version-test/coreone-custom-connect-test-with-bootloader.bbf`.
-The prior BBF and matching ELF/map are preserved under
-`build/personal-artifacts/before-connect-version-test/` in this checkout.
+The 6.8.1 artifact is
+`build/personal-artifacts/coreone-6.8.1/coreone-6.8.1-custom-with-bootloader.bbf`.
+Earlier 6.10.1 BBFs and matching ELF/maps are preserved under
+`build/personal-artifacts/before-connect-version-test/` and
+`build/personal-artifacts/connect-version-test/` in this checkout.
 
 ### Build commands
 
@@ -130,7 +132,8 @@ For another machine, install gettext with its runtime, libtextstyle and libiconv
 dependencies. These downloaded binaries are not committed.
 
 It uses the local `.venv`, Python UTF-8 mode, COREONE Release, bootloader support,
-and version suffix `-custom+16383`. Build outputs are in
+and version suffix `-custom+<Git commit count>`. The automatic count matches the
+BBF build number; an explicit `-VersionSuffix` overrides the default. Build outputs are in
 `build/coreone_release_boot/`. Preserve the matching ELF with the BBF for crash
 analysis. The wrapper does not flash the printer or upload firmware.
 

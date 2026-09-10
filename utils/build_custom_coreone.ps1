@@ -1,7 +1,7 @@
 # Builds the personal CORE One firmware with the repository's pinned toolchain.
 # Bootstrap utils/bootstrap.py first. No administrator rights are required.
 [CmdletBinding()]
-param([string]$VersionSuffix = '-custom+16383')
+param([string]$VersionSuffix = '')
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -9,6 +9,13 @@ $repoPrefix = $repoRoot + [IO.Path]::DirectorySeparatorChar
 $python = Join-Path $repoRoot '.venv/Scripts/python.exe'
 if (!(Test-Path -LiteralPath $python -PathType Leaf)) {
     throw 'Run utils/bootstrap.py to create the local Python environment first.'
+}
+if ([string]::IsNullOrWhiteSpace($VersionSuffix)) {
+    $commitCount = git -C $repoRoot rev-list --count HEAD
+    if ($LASTEXITCODE -ne 0 -or $commitCount -notmatch '^\d+$') {
+        throw 'Cannot determine the custom firmware build number from Git.'
+    }
+    $VersionSuffix = '-custom+' + $commitCount
 }
 
 # Git on Windows may check out symlinks as small text files. Materialize only
