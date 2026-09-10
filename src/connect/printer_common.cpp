@@ -6,6 +6,7 @@
 #include <support_utils.h>
 #include <version/version.hpp>
 #include <bsod/bsod.h>
+#include <string_view>
 
 namespace connect_client {
 
@@ -26,7 +27,13 @@ Printer::Config load_eeprom_config() {
 }
 
 void init_info(Printer::PrinterInfo &info) {
-    info.firmware_version = version::project_version_full;
+    // Personal builds retain their full identity on the printer and in crash
+    // reports. Diagnostic compatibility change: send the actual base release
+    // to test whether Connect rejects the nonstandard "-custom" label.
+    // Other builds, including upstream prereleases, keep their full version.
+    info.firmware_version = std::string_view(version::project_version_suffix).starts_with("-custom")
+        ? version::project_version
+        : version::project_version_full;
     info.appendix = appendix_exist();
     if (otp_get_serial_nr(info.serial_number) == 0) {
         bsod("otp_get_serial_nr");

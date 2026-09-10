@@ -93,6 +93,28 @@ hardware checks. There is no need to force-push or open a PR against Prusa.
 
 ## Building and validation
 
+### Prusa Connect compatibility investigation
+
+Connect rejected this custom build first as not supporting binary G-code, then
+as not supporting file transfer even with plain G-code. The firmware contains
+both implementations. As a diagnostic compatibility change, builds whose suffix
+starts with `-custom` now report the actual base version (`6.10.1`) to Connect.
+The printer UI and crash identification keep `6.10.1-custom+16383`; upstream
+release and prerelease builds keep their original Connect version reporting.
+
+This targets a suspected cloud version-classification problem. It is not a
+confirmed fix: after flashing, verify that Connect receives `6.10.1`, then test
+transfer to the printer with both `.gcode` and `.bgcode` (upload-only success is
+insufficient). If transfer is still rejected, investigate Connect's printer
+model/version support rather than claiming the firmware lacks file transfer.
+
+The diagnostic artifact is
+`build/personal-artifacts/connect-version-test/coreone-custom-connect-test-with-bootloader.bbf`.
+The prior BBF and matching ELF/map are preserved under
+`build/personal-artifacts/before-connect-version-test/` in this checkout.
+
+### Build commands
+
 Use the repository's `utils/bootstrap.py` and pinned dependencies. On Windows,
 the convenience wrapper temporarily materializes Git symlink stubs as junctions
 or file copies and restores their original bytes in `finally`:
