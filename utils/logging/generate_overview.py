@@ -12,7 +12,7 @@ ComponentDefintion = namedtuple(
 
 
 def scan_file(file_path: Path):
-    with open(file_path, 'r') as f:
+    with open(file_path, 'r', encoding='utf-8') as f:
         for line_idx, line in enumerate(f.readlines()):
             match = component_def_re.match(line)
             if not match:
@@ -51,12 +51,13 @@ if __name__ == "__main__":
         '',
     ]
     for component in sorted(components,
-                            key=lambda c: c.component_name + str(c.file_path)):
+                            key=lambda c:
+                            (c.component_name, c.file_path.as_posix())):
         component_def_path = component.file_path.relative_to(
             project_root).as_posix()
         doc += [
             f'- {component.component_name}: {component.lowest_severity}, {component_def_path}'
         ]
     doc_file = project_root / 'doc' / 'logging_components.md'
-    with open(doc_file, 'w') as f:
+    with open(doc_file, 'w', encoding='utf-8') as f:
         f.writelines(l + '\n' for l in doc)
