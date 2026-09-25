@@ -11,3 +11,9 @@ target_link_libraries(filament_sensor_adc_tests buddy_utils)
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/2023-04-05_16-14.csv DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 add_catch_test(filament_sensor_adc_tests)
+
+add_executable(mmu_runout_tests mmu_runout_tests.cpp)
+target_include_directories(
+  mmu_runout_tests PUBLIC ${CMAKE_SOURCE_DIR}/tests/stubs ${CMAKE_SOURCE_DIR}/src/common
+  )
+add_catch_test(mmu_runout_tests)

@@ -96,6 +96,7 @@ static void M600_manual(const GCodeParser2 &);
  * - `S"filament"` - Set filament type for filament change. RepRap compatible.
  * - `N` - No return, don't return to previous position after fillament change
  * - `P` - If set, the parameter 'T' is interpreted as a physical tool (tool mapping is not applied)
+ * - `W` - Skip MMU unload/eject for a pending two-stage runout recovery
  *
  *  Default values are used for omitted arguments.
  *
@@ -111,11 +112,22 @@ void GcodeSuite::M600() {
     }
 
     const bool is_auto_m600 = p.option<bool>('A').value_or(false);
+    const bool is_mmu_recovery = p.option<bool>('W').value_or(false);
+#if HAS_MMU2()
+    const bool pending_mmu_runout = FSensors_instance().mmu_runout_slot().has_value();
+#else
+    constexpr bool pending_mmu_runout = false;
+#endif
+    // A queued recovery can become stale when a synchronous T/manual M600 has
+    // already completed it. Never turn that stale command into a normal change.
+    if (is_mmu_recovery && !pending_mmu_runout) {
+        return;
+    }
 
     bool do_manual_m600 = true;
 
 #if ENABLED(PRUSA_SPOOL_JOIN)
-    if (is_auto_m600) {
+    if (is_auto_m600 && !pending_mmu_runout) {
 
         uint8_t current_tool = 0;
     #if HAS_TOOLCHANGER()
@@ -147,7 +159,7 @@ void GcodeSuite::M600() {
 void M600_execute(xyz_pos_t park_point, uint8_t target_extruder,
     xyze_float_t resume_point, std::optional<float> unloadLength, std::optional<float> fastLoadLength,
     std::optional<float> retractLength, std::optional<Color> filament_colour,
-    std::optional<FilamentType> filament_type, bool);
+    std::optional<FilamentType> filament_type, bool is_filament_stuck, bool skip_unload = false);
 
 void M600_manual(const GCodeParser2 &p) {
     const int8_t target_extruder = PrusaGcodeSuite::get_target_extruder_from_command_p(p);
@@ -176,6 +188,13 @@ void M600_manual(const GCodeParser2 &p) {
 
     const xyze_float_t no_return = { { { NAN, NAN, NAN, current_position.e } } };
 
+#if HAS_MMU2()
+    const bool pending_mmu_runout = FSensors_instance().mmu_runout_slot().has_value();
+    const bool skip_unload = pending_mmu_runout;
+#else
+    const bool skip_unload = false;
+#endif
+
     M600_execute(park_point,
         target_extruder,
         p.option<bool>('N') ? no_return : current_position,
@@ -184,13 +203,14 @@ void M600_manual(const GCodeParser2 &p) {
         p.option<float>('E').transform(fabsf),
         p.option<Color>('C'),
         p.option<FilamentType>('S'),
-        false);
+        false,
+        skip_unload);
 }
 
 void M600_execute(xyz_pos_t park_point, uint8_t target_extruder, xyze_float_t resume_point,
     std::optional<float> unloadLength, std::optional<float> fastLoadLength, std::optional<float> retractLength,
     std::optional<Color> filament_colour, std::optional<FilamentType> filament_type,
-    bool is_filament_stuck) {
+    bool is_filament_stuck, bool skip_unload) {
 
     // Ignore estalls during filament change
     BlockEStallDetection estall_blocker;
@@ -245,6 +265,14 @@ void M600_execute(xyz_pos_t park_point, uint8_t target_extruder, xyze_float_t re
         settings.SetRetractLength(retractLength.value());
     } // Initial retract before move to filament change position
     settings.SetExtruder(target_extruder);
+    if (skip_unload) {
+        settings.SetSkipUnload();
+#if HAS_MMU2()
+        if (const auto slot = FSensors_instance().mmu_runout_slot()) {
+            settings.SetMmuFilamentToLoad(*slot);
+        }
+#endif
+    }
 
     const float disp_temp = marlin_vars().hotend(target_extruder).display_nozzle;
     const float targ_temp = Temperature::degTargetHotend(target_extruder);

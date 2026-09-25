@@ -9,6 +9,7 @@
 #include "stdint.h"
 #include <feature/filament_sensor/filament_sensor.hpp>
 #include "filament_sensor_types.hpp"
+#include "mmu_runout.hpp"
 #include "../../lib/Marlin/Marlin/src/feature/prusa/MMU2/mmu2_fsensor.h" // MMU2::FilamentState
 #include <atomic>
 #include <bitset>
@@ -64,6 +65,14 @@ public:
     bool IsAutoloadInProgress() { return autoload_sent; }
     MMU2::FilamentState WhereIsFilament();
 
+    /// Thread-safe snapshot of a pending natural MMU runout.
+    std::optional<uint8_t> mmu_runout_slot() const { return mmu_runout_.slot(); }
+    void finish_mmu_runout();
+    void restore_mmu_runout(uint8_t slot) {
+        mmu_runout_.restore(slot);
+        ClrM600Sent();
+    }
+
     /// Thread-safe
     inline IFSensor *sensor(LogicalFilamentSensor sensor) const {
         return logical_sensors_[sensor];
@@ -101,6 +110,9 @@ protected:
     void task_cycle();
 
 private:
+    MmuRunout mmu_runout_;
+    std::atomic<bool> clear_mmu_runout_persistence_ = false;
+
     // Non-public members can only be written to from the cycle() function (called from the Measurement task)
     // The variables are made atomic so that one can read them from different threads and get somewhat valid values.
 

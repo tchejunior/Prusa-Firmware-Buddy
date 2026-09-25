@@ -7,6 +7,10 @@ FilamentState WhereIsFilament() {
     return FSensors_instance().WhereIsFilament();
 }
 
+bool IsMmuRunoutPending() {
+    return FSensors_instance().mmu_runout_slot().has_value();
+}
+
 FSensorBlockRunout::FSensorBlockRunout() {
     FSensors_instance().IncEvLock();
 }

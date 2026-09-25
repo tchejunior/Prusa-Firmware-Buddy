@@ -16,6 +16,13 @@
 
 #include "str_utils.hpp"
 #include "marlin_client.hpp"
+#include "marlin_server.hpp"
+#include "sound.hpp"
+
+#include <option/has_power_panic.h>
+#if HAS_POWER_PANIC()
+    #include "power_panic.hpp"
+#endif
 
 #include <option/has_gui.h>
 #if HAS_GUI()
@@ -207,6 +214,50 @@ void FilamentSensors::reconfigure_sensors_if_needed(bool force) {
 }
 
 void FilamentSensors::process_events() {
+#if HAS_MMU2() && FILAMENT_SENSOR_IS_ADC()
+    const bool print_active = marlin_client::is_printing()
+        && !marlin_server::aborting_or_aborted() && !marlin_server::finishing_or_finished();
+    const bool can_run = !isEvLocked() && !m600_sent
+        && marlin_vars().print_state == marlin_server::State::Printing;
+    const auto finda = sensor(LogicalFilamentSensor::primary_runout);
+    const auto action = mmu_runout_.step(has_mmu, print_active, can_run,
+        finda && finda->last_event() == IFSensor::Event::filament_removed,
+        sensor_state(LogicalFilamentSensor::primary_runout),
+        sensor_state(LogicalFilamentSensor::secondary_runout),
+        MMU2::mmu2.get_current_tool());
+
+    if (clear_mmu_runout_persistence_.exchange(false)) {
+        config_store().mmu_runout_recovery_slot.set(255);
+    }
+    if (const auto slot = mmu_runout_.slot()) {
+        if (config_store().mmu_runout_recovery_slot.get() != *slot) {
+            config_store().mmu_runout_recovery_slot.set(*slot);
+        }
+    } else if (!print_active
+    #if HAS_POWER_PANIC()
+        && !power_panic::state_stored()
+    #endif
+    ) {
+        if (config_store().mmu_runout_recovery_slot.get() != 255) {
+            config_store().mmu_runout_recovery_slot.set(255);
+        }
+    }
+
+    if (action == MmuRunout::Action::warn) {
+        Sound_Play(eSOUND_TYPE::SingleBeep);
+        log_info(FSensor, "FINDA runout: consuming remaining Bowden filament");
+    } else if (action == MmuRunout::Action::pause) {
+        m600_sent = true;
+        Sound_Play(eSOUND_TYPE::SingleBeep);
+        marlin_client::inject("M600 W");
+        log_info(FSensor, "Extruder ADC runout: injected direct reload");
+    }
+
+    if (mmu_runout_.slot()) {
+        return;
+    }
+#endif
+
     if (isEvLocked()) {
         return;
     }
@@ -290,6 +341,12 @@ void FilamentSensors::process_events() {
             return;
         }
     }
+}
+
+void FilamentSensors::finish_mmu_runout() {
+    mmu_runout_.reset();
+    ClrM600Sent();
+    clear_mmu_runout_persistence_ = true;
 }
 
 void FilamentSensors::process_enable_state_update() {

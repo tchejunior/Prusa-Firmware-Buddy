@@ -34,6 +34,10 @@ public:
     void SetResumePoint(const xyze_pos_t &resume_point);
     void SetMmuFilamentToLoad(uint8_t index);
 
+    /// Natural MMU runout: the old filament is already clear of both sensors,
+    /// so skip unload/eject and reload the captured slot.
+    void SetSkipUnload() { skip_unload = true; }
+
     void SetExtruder(uint8_t target) { target_extruder = target; }
     uint8_t GetExtruder() const { return target_extruder; }
 
@@ -57,6 +61,7 @@ private:
 
     // Preloaded from the config_store to prevent querying it each loop
     bool extruder_mmu_rework : 1 = PRINTER_IS_PRUSA_iX();
+    bool skip_unload : 1 = false;
 };
 
 } // namespace pause

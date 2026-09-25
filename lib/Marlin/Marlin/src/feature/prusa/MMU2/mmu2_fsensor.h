@@ -14,6 +14,11 @@ enum class FilamentState : uint_fast8_t {
 
 FilamentState WhereIsFilament();
 
+/// True while Buddy owns a two-stage MMU runout recovery. This remains true
+/// while M600 pauses the print timer, preventing the legacy FINDA path from
+/// enqueueing a second filament change.
+bool IsMmuRunoutPending();
+
 /// Can be used to block printer's filament sensor handling - to avoid errorneous injecting of M600
 /// while doing a toolchange with the MMU
 class FSensorBlockRunout {

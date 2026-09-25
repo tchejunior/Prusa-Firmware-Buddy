@@ -108,6 +108,10 @@ public:
     /// @returns true upon success
     bool WriteRegister(uint8_t address, uint16_t data);
 
+    /// Reconcile Buddy and MMU state after the exhausted filament tail has
+    /// passed the extruder sensor. This performs no filament motion.
+    bool prepare_runout_reload(uint8_t slot);
+
     /// The main loop of MMU processing.
     /// Doesn't loop (block) inside, performs just one step of logic state machines.
     /// Also, internally it prevents recursive entries.
@@ -144,7 +148,7 @@ public:
 
     /// Load (push) filament from the MMU into the printer's nozzle
     /// @returns false if the operation cannot be performed (Stopped or cold extruder)
-    bool load_filament_to_nozzle(uint8_t slot);
+    bool load_filament_to_nozzle(uint8_t slot, bool after_runout = false);
 
     /// Move MMU's selector aside and push the selected filament forward.
     /// Usable for improving filament's tip or pulling the remaining piece of filament out completely.
@@ -402,7 +406,12 @@ private:
 #endif
     std::atomic<MMU2BootloaderResult> bootloader_result_ = MMU2BootloaderResult::not_detected;
 
-    uint8_t extruder; ///< currently active slot in the MMU ... somewhat... not sure where to get it from yet
+#ifdef __AVR__
+    uint8_t extruder;
+#else
+    // Read by Buddy's measurement task when it latches a FINDA runout.
+    std::atomic<uint8_t> extruder;
+#endif
     uint8_t tool_change_extruder; ///< only used for UI purposes
 
     pos3d resume_position;
@@ -447,6 +456,9 @@ private:
     /// thus making the toolchange faster. In some cases (like unload after a failed load)
     /// it is necessary to wait for the Tn command to finish before issuing the U0 command.
     bool allowPrematureFinish;
+
+    /// Limits positive extruder motion during the one recovery load.
+    bool runout_reload_ = false;
 };
 
 /// following Marlin's way of doing stuff - one and only instance of MMU implementation in the code base

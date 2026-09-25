@@ -339,6 +339,9 @@ struct CurrentStore
 
 #if HAS_MMU2()
     StoreItem<bool, false, ItemFlag::features, journal::hash("MMU2 Enabled")> mmu2_enabled;
+    // One write per natural runout. Journal storage keeps the selected slot
+    // across power panic without changing its binary recovery structure.
+    StoreItem<uint8_t, 255, ItemFlag::printer_state, journal::hash("Custom MMU runout slot")> mmu_runout_recovery_slot;
     StoreItem<bool, false, ItemFlag::features | ItemFlag::hw_config, journal::hash("MMU2 Cutter")> mmu2_cutter; // use MMU2 cutter when it sees fit
     StoreItem<bool, false, ItemFlag::features, journal::hash("MMU2 Stealth Mode")> mmu2_stealth_mode; // run MMU2 in stealth mode wherever possible
 

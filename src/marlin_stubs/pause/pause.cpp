@@ -826,8 +826,33 @@ void Pause::mmu_load_process([[maybe_unused]] Response response) {
         return;
     }
 
-    MMU2::mmu2.load_filament(settings.mmu_filament_to_load);
-    MMU2::mmu2.load_filament_to_nozzle(settings.mmu_filament_to_load);
+    if (settings.skip_unload) {
+        const bool loaded = MMU2::mmu2.load_filament(settings.mmu_filament_to_load)
+            && MMU2::mmu2.load_filament_to_nozzle(settings.mmu_filament_to_load, true);
+        if (!loaded || planner.draining() || MMU2::mmu2.State() != MMU2::xState::Active
+            || MMU2::mmu2.get_current_tool() != settings.mmu_filament_to_load
+            || !FSensors_instance().has_filament_surely(LogicalFilamentSensor::secondary_runout)) {
+            if (planner.draining()) {
+                // Power panic owns the unwind. Keep the persisted slot so the
+                // resumed print cannot bypass this unfinished replacement.
+                set(LoadState::stop);
+                return;
+            }
+            // Never resume an empty or interrupted recovery.
+            FSensors_instance().finish_mmu_runout();
+            settings.skip_unload = false;
+            planner.quick_stop();
+            marlin_server::print_abort();
+            set(LoadState::stop);
+            return;
+        }
+        FSensors_instance().finish_mmu_runout();
+        settings.skip_unload = false;
+    } else {
+        // Preserve the stock 6.5.7 behavior for ordinary MMU filament changes.
+        MMU2::mmu2.load_filament(settings.mmu_filament_to_load);
+        MMU2::mmu2.load_filament_to_nozzle(settings.mmu_filament_to_load);
+    }
 
     setPhase(PhasesLoadUnload::IsColor);
     set(LoadState::color_correct_ask);
@@ -838,6 +863,30 @@ void Pause::mmu_unload_start_process([[maybe_unused]] Response response) {
         MMU2::mmu2.unload();
         set(LoadState::_finished);
     } else if (load_type == LoadType::filament_change) {
+        if (settings.skip_unload) {
+            if (!FSensors_instance().no_filament_surely(LogicalFilamentSensor::secondary_runout)) {
+                // A T command can arrive before the Bowden tail is consumed.
+                // Park safely and wait until the user removes it from the ADC.
+                setPhase(PhasesLoadUnload::ManualUnload_continuable);
+                return;
+            }
+            if (settings.mmu_filament_to_load >= 5
+                || !MMU2::mmu2.prepare_runout_reload(settings.mmu_filament_to_load)) {
+                if (planner.draining()) {
+                    set(LoadState::stop);
+                    return;
+                }
+                FSensors_instance().finish_mmu_runout();
+                settings.skip_unload = false;
+                planner.quick_stop();
+                marlin_server::print_abort();
+                set(LoadState::stop);
+                return;
+            }
+            set(LoadState::load_start);
+            return;
+        }
+
         settings.mmu_filament_to_load = MMU2::mmu2.get_current_tool();
 
         // No filament loaded in MMU, we can't continue, as we don't know what slot to load
@@ -1299,7 +1348,7 @@ bool Pause::parkMoveXGreaterThanY(const xyz_pos_t &pos0, const xyz_pos_t &pos1) 
 void Pause::park_nozzle_and_notify() {
     setPhase(is_unstoppable() ? PhasesLoadUnload::Parking_unstoppable : PhasesLoadUnload::Parking_stoppable);
     // Initial retract before move to filament change position
-    if (settings.retract && thermalManager.hotEnoughToExtrude(active_extruder)) {
+    if (!settings.skip_unload && settings.retract && thermalManager.hotEnoughToExtrude(active_extruder)) {
         do_pause_e_move(settings.retract, PAUSE_PARK_RETRACT_FEEDRATE);
     }
 
@@ -1712,10 +1761,16 @@ Pause::FSM_HolderLoadUnload::~FSM_HolderLoadUnload() {
     thermalManager.set_fan_speed(0, original_print_fan_speed);
     active = false;
 
+    if (planner.draining() || marlin_server::aborting_or_aborted()) {
+        pause.clr_mode();
+        return;
+    }
+
     const float min_layer_h = 0.05f;
     // do not unpark and wait for temp if not homed or z park len is 0
     if (!axes_need_homing() && pause.settings.resume_pos.z != NAN && std::abs(current_position.z - pause.settings.resume_pos.z) >= min_layer_h && (marlin_client::is_printing() || marlin_client::is_paused())) {
         if (!pause.ensureSafeTemperatureNotifyProgress()) {
+            pause.clr_mode();
             return;
         }
         pause.unpark_nozzle_and_notify();
