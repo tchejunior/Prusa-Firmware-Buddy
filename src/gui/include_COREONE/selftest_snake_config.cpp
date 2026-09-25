@@ -44,6 +44,9 @@ TestResult get_test_result(Action action, [[maybe_unused]] Tool tool) {
             } else {
                 res = evaluate_results(res, chamber_results.fans[0]);
                 res = evaluate_results(res, chamber_results.fans[1]);
+                if (buddy::xbuddy_extension().using_custom_filtration()) {
+                    res = evaluate_results(res, chamber_results.fans[2]);
+                }
             }
             break;
         }

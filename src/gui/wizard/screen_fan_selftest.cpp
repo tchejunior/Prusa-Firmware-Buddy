@@ -62,6 +62,7 @@ static constexpr const char *en_text_info_switched = N_("Based on the test it lo
 static constexpr const char *en_text_enclosure_fan = N_("Enclosure fan");
 static constexpr const char *en_text_cooling_fans = N_("Cooling fans");
 static constexpr const char *en_text_filtration_fan = N_("Filtration fan");
+static constexpr const char *en_text_chamber_fans = N_("Chamber fans");
 
 #endif
 
@@ -170,6 +171,9 @@ namespace frame {
                 } else {
                     process_fan_result(config_store().xbe_fan_test_results.get().fans[0], enclosure_icons, 0 /* icon_index */);
                     process_fan_result(config_store().xbe_fan_test_results.get().fans[1], enclosure_icons, 1);
+                    if (buddy::xbuddy_extension().using_custom_filtration()) {
+                        process_fan_result(config_store().xbe_fan_test_results.get().fans[2], enclosure_icons, 2);
+                    }
                 }
                 break;
     #endif
@@ -274,8 +278,8 @@ namespace frame {
                     enclosure_fan_count = 1;
                     enclosure_label.SetText(_(en_text_filtration_fan));
                 } else {
-                    enclosure_fan_count = 2;
-                    enclosure_label.SetText(_(en_text_cooling_fans));
+                    enclosure_fan_count = buddy::xbuddy_extension().using_custom_filtration() ? 3 : 2;
+                    enclosure_label.SetText(buddy::xbuddy_extension().using_custom_filtration() ? _(en_text_chamber_fans) : _(en_text_cooling_fans));
                 }
                 break;
     #endif

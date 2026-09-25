@@ -3,13 +3,15 @@
 
 namespace buddy {
 
+ChamberFiltrationBackend test_filtration_backend = ChamberFiltrationBackend::none;
+
 ChamberFiltration &chamber_filtration() {
     static ChamberFiltration instance;
     return instance;
 }
 
 ChamberFiltrationBackend ChamberFiltration::backend() const {
-    return ChamberFiltrationBackend::none;
+    return test_filtration_backend;
 }
 
 } // namespace buddy

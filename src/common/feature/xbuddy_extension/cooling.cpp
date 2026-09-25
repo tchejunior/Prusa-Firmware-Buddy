@@ -42,6 +42,7 @@ FanCooling::FanPWM FanCooling::compute_auto_regulation_step(Temperature current_
         ramp_mult = 2.0f;
         break;
     case ChamberFiltrationBackend::none:
+    case ChamberFiltrationBackend::xbe_custom_filter:
         // no multipliers for no filtration
         break;
     default:

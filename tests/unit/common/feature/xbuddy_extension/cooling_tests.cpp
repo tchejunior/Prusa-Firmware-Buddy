@@ -1,11 +1,34 @@
 #include <feature/xbuddy_extension/cooling.hpp>
+#include <feature/chamber_filtration/chamber_filtration_enums.hpp>
 
 #include <catch2/catch.hpp>
 
 using namespace buddy;
 
+namespace buddy {
+extern ChamberFiltrationBackend test_filtration_backend;
+}
+
 std::ostream &operator<<(std::ostream &os, const FanCooling::FanPWM &pwm) {
     return os << "FanPWM{" << static_cast<int>(pwm.value) << "}";
+}
+
+TEST_CASE("Custom filtration separates recirculation from exhaust cooling") {
+    test_filtration_backend = ChamberFiltrationBackend::xbe_custom_filter;
+    FanCooling custom;
+    custom.regulator_legacy = false;
+
+    const auto filtering = custom.compute_custom_filtration_step(40, 55, pwm_auto, pwm_auto, PWM255 { 255 }, PWM255 { 180 });
+    REQUIRE(filtering.cooling.value == 0);
+    REQUIRE(filtering.filtration.value == 180);
+
+    const auto cooling_only = custom.compute_custom_filtration_step(54, 50, pwm_auto, PWM255 { 0 }, PWM255 { 255 }, PWM255 { 180 });
+    REQUIRE(cooling_only.cooling.value == 40);
+    REQUIRE(cooling_only.filtration.value == 0);
+
+    static_cast<void>(custom.compute_pwm_step(FanCooling::overheating_temp, 50, PWM255 { 0 }, PWM255 { 255 }));
+    REQUIRE(custom.apply_pwm_overrides(true, PWM255 { 0 }).value == 255);
+    test_filtration_backend = ChamberFiltrationBackend::none;
 }
 
 TEST_CASE("Cooling PWM") {
