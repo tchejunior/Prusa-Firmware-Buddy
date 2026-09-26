@@ -63,3 +63,11 @@ git push -u origin codex/personal-coreone-<version>
 ```
 
 Build and repeat the hardware acceptance checks after every port. Do not merge this branch into an upstream checkout or open an upstream pull request.
+
+## BUILD COMMAND
+
+We have to use this command, as it generates the firmware in a way that PrusaConnect accepts the printer, and do not display the error message `The current printer firmware does not support binary gcode`
+
+```bash
+C:\Users\mp4864\AppData\Local\Python\pythoncore-3.14-64\python.exe utils/build.py --preset coreone --final
+```
