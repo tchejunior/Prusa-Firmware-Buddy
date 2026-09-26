@@ -27,11 +27,13 @@ def main():
         pofile[:] = [e for e in pofile if e.msgid.encode() in blob]
 
     # polib doesn't build a hash table so we need to call msgfmt here.
-    with tempfile.NamedTemporaryFile() as tmp:
-        pofile.save(tmp.name)
-        subprocess.run(['msgfmt', tmp.name, '-o',
-                        str(args.output)],
-                       check=True)
+    # A named file kept open by Python cannot be reopened on Windows.
+    with tempfile.TemporaryDirectory() as tmp:
+        source = Path(tmp) / 'messages.po'
+        pofile.save(str(source))
+        subprocess.run(
+            ['msgfmt', str(source), '-o',
+             str(args.output)], check=True)
 
 
 if __name__ == '__main__':

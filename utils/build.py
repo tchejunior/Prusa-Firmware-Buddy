@@ -767,6 +767,21 @@ def main():
         # check all dependencies are installed (excluding dependencies for integration tests)
         bootstrap.bootstrap(include_integration=False)
 
+    if (os.name == 'nt' and sys.argv[1:] == ['--preset', 'coreone', '--final']
+            and os.environ.get('BUDDY_WINDOWS_COREONE_WRAPPER') != '1'):
+        # Windows Git checkouts may represent DSDL symlinks as text files.
+        # The wrapper materializes only the known build inputs temporarily.
+        powershell = shutil.which('pwsh') or shutil.which('powershell')
+        if powershell is None:
+            raise RuntimeError(
+                'PowerShell is required for a Windows CORE One final build.')
+        wrapper = utils_dir / 'build_custom_coreone.ps1'
+        result = subprocess.run(
+            [powershell, '-NoProfile', '-File',
+             str(wrapper), '-Final'],
+            check=False)
+        sys.exit(result.returncode)
+
     # build everything
     results: Dict[BuildConfiguration, BuildResult] = dict()
     for configuration in configurations:
