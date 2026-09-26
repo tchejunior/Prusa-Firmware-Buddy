@@ -52,6 +52,9 @@ const char *ChamberFiltration::backend_name(Backend backend) {
 
     case Backend::xbe_filter_on_cooling_fans:
         return "DIY";
+
+    case Backend::xbe_custom_filter:
+        return N_("Custom filtration");
 #endif
     }
 
@@ -76,6 +79,7 @@ size_t ChamberFiltration::get_available_backends(BackendArray &target) {
     if (xbuddy_extension().status() != XBuddyExtension::Status::disabled) {
         append.operator()<Backend::xbe_official_filter>();
         append.operator()<Backend::xbe_filter_on_cooling_fans>();
+        append.operator()<Backend::xbe_custom_filter>();
     }
 #endif
 
@@ -161,6 +165,7 @@ uint32_t ChamberFiltration::filter_lifetime_s() const {
         return 600 * 3600;
 
     case Backend::xbe_filter_on_cooling_fans:
+    case Backend::xbe_custom_filter:
         // DIY solution, unknown rated life. Let's say that it's the same as the official filter
         return 600 * 3600;
 #endif

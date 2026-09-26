@@ -45,6 +45,9 @@ TestResult get_test_result(Action action, [[maybe_unused]] ToolMask tool) {
             } else {
                 res = test_result::evaluate_results(res, chamber_results.fans[0]);
                 res = test_result::evaluate_results(res, chamber_results.fans[1]);
+                if (buddy::xbuddy_extension().using_custom_filtration()) {
+                    res = test_result::evaluate_results(res, chamber_results.fans[2]);
+                }
             }
             break;
         }

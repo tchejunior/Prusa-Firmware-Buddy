@@ -54,6 +54,15 @@ public:
     // !!!!!!!! this function should be called in regular time intervals given by dt_s !!!!!!!!
     [[nodiscard]] FanPWM compute_pwm_step(Temperature current_temperature, std::optional<Temperature> target_temperature, FanPWMOrAuto target_pwm, FanPWM max_auto_pwm);
 
+    struct CustomFiltrationPWM {
+        FanPWM cooling;
+        FanPWM filtration;
+    };
+    CustomFiltrationPWM compute_custom_filtration_step(Temperature current, std::optional<Temperature> target,
+        FanPWMOrAuto cooling_target, FanPWMOrAuto filtration_target, FanPWM max_cooling, FanPWM filtration_demand) {
+        return { compute_pwm_step(current, target, cooling_target, max_cooling), filtration_target.value_or(filtration_demand) };
+    }
+
     constexpr bool get_overheating_temp_flag() { return overheating_temp_flag; };
     constexpr bool get_critical_temp_flag() { return critical_temp_flag; };
 

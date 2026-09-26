@@ -17,7 +17,7 @@ namespace buddy {
 class ChamberFiltration {
 
 public:
-    static constexpr size_t max_backend_count = 4;
+    static constexpr size_t max_backend_count = 5;
     static constexpr size_t max_post_print_filtration_time_min = 90; // Propagate any change to Connect team
 
     using Backend = ChamberFiltrationBackend;

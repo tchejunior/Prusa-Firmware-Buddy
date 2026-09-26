@@ -494,7 +494,7 @@ void M1978() {
         };
     }(std::make_index_sequence<PhysicalToolIndex::count>());
 
-    std::array<FanHandler *, HOTENDS * 2 + 5 /* enclosure/chamber fans (1-2) + AC fans (2) + reserve */> fan_container;
+    std::array<FanHandler *, HOTENDS * 2 + 6 /* chamber fans (3) + AC fans (2) + reserve */> fan_container;
     std::array<std::pair<FanHandler *, FanHandler *>, PhysicalToolIndex::count> tool_fan_pairs;
 
     size_t container_index = 0;
@@ -554,6 +554,9 @@ void M1978() {
         } else {
             fan_container[container_index++] = &xbe_fans[0];
             fan_container[container_index++] = &xbe_fans[1];
+            if (buddy::xbuddy_extension().using_custom_filtration()) {
+                fan_container[container_index++] = &xbe_fans[2];
+            }
         }
         break;
     #endif
