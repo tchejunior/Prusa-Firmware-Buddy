@@ -125,7 +125,7 @@ void GcodeSuite::M600() {
     bool do_manual_m600 = true;
 
 #if HAS_SPOOL_JOIN()
-    if (is_auto_m600) {
+    if (is_auto_m600 && !FSensors_instance().mmu_runout_slot()) {
         auto virtual_tool = stdext::get_optional<VirtualToolIndex>(VirtualToolIndex::currently_selected());
         if (!virtual_tool.has_value()) {
             bsod("Spool join to notool");
@@ -155,7 +155,15 @@ void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_t
     std::optional<FilamentType> filament_type, bool);
 
 void M600_manual(const GCodeParser2 &p) {
-    const std::optional<VirtualToolIndex> virtual_tool = stdext::get_optional<VirtualToolIndex>(PrusaGcodeSuite::get_target_virtual_from_command_p(p));
+    std::optional<VirtualToolIndex> virtual_tool;
+#if HAS_MMU2()
+    if (const auto slot = FSensors_instance().mmu_runout_slot()) {
+        virtual_tool = VirtualToolIndex::from_raw(*slot);
+    }
+#endif
+    if (!virtual_tool) {
+        virtual_tool = stdext::get_optional<VirtualToolIndex>(PrusaGcodeSuite::get_target_virtual_from_command_p(p));
+    }
     if (!virtual_tool.has_value()) {
         return;
     }
@@ -244,6 +252,9 @@ void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_t
         debug_assert(!std::holds_alternative<mapi::ParkingPosition::Unchanged>(park_position.z));
     }
     pause::Settings settings;
+#if HAS_MMU2()
+    settings.SetMmuRunout(!is_filament_stuck && FSensors_instance().mmu_runout_slot().has_value());
+#endif
     settings.SetParkPoint(park_position);
     settings.SetResumePoint(resume_point);
     if (unloadLength.has_value()) {

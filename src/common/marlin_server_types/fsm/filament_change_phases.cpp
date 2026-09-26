@@ -101,6 +101,8 @@ constinit const EnumArray<PhasesLoadUnload, PhaseResponses, CountPhases<PhasesLo
         { PhasesLoadUnload::MMU_HWTestExec, {} },
         { PhasesLoadUnload::MMU_HWTestDisplay, {} },
         { PhasesLoadUnload::MMU_ErrHwTestFailed, {} },
+        { PhasesLoadUnload::MMURunoutClear, { Response::Continue, Response::Abort } },
+        { PhasesLoadUnload::MMURunoutError, { Response::Retry, Response::Abort } },
 #endif
 };
 

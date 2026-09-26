@@ -109,6 +109,9 @@ public:
     /// @returns true upon success
     bool WriteRegister(uint8_t address, uint16_t data);
 
+    /// Reconcile both boards after a consumed tail; no motion, checked readback.
+    bool prepare_runout_reload(uint8_t slot);
+
     /// The main loop of MMU processing.
     /// Doesn't loop (block) inside, performs just one step of logic state machines.
     /// Also, internally it prevents recursive entries.
@@ -145,7 +148,7 @@ public:
 
     /// Load (push) filament from the MMU into the printer's nozzle
     /// @returns false if the operation cannot be performed (Stopped or cold extruder)
-    bool load_filament_to_nozzle(uint8_t slot);
+    bool load_filament_to_nozzle(uint8_t slot, bool after_runout = false);
 
     /// Move MMU's selector aside and push the selected filament forward.
     /// Usable for improving filament's tip or pulling the remaining piece of filament out completely.
@@ -267,6 +270,7 @@ public:
 
 #ifndef UNITTEST
 private:
+    bool runout_reload_ = false;
 #endif
     /// Perform software self-reset of the MMU (sends an X0 command)
     void ResetX0();

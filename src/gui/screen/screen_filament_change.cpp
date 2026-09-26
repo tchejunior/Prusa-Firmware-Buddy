@@ -524,6 +524,8 @@ using Frames = FrameDefinitionList<ScreenFilamentChange::FrameStorage,
     FrameDefinition<Phase::MMU_HWTestExec, FrameProgress, txt_mmu_hw_test_exec>,
     FrameDefinition<Phase::MMU_HWTestDisplay, FrameProgress, txt_mmu_hw_test_display>,
     FrameDefinition<Phase::MMU_ErrHwTestFailed, FrameProgress, txt_mmu_errhw_test_fail>,
+    FrameDefinition<Phase::MMURunoutClear, WithBeepAlertSound<FramePrompt>, N_("Clear remaining filament"), N_("Remove the remaining filament from the tube and extruder gears. Check the filament sensors, then press Continue.")>,
+    FrameDefinition<Phase::MMURunoutError, WithBeepAlertSound<FramePrompt>, N_("MMU recovery failed"), N_("Check the MMU connection and filament sensors, then Retry. If the selector moved after a restart, Abort this print, clear the filament path and reload.")>,
 #endif
     FrameDefinition<Phase::Unparking, FrameProgress, txt_unparking>>;
 } // anonymous namespace

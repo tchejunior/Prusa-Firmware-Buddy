@@ -151,6 +151,8 @@ optional<ErrCode> load_unload_attention_while_printing([[maybe_unused]] const fs
             return ErrCode::CONNECT_MMU_LOAD_UNLOAD_ERROR;
             // Some other questions... they are the same(ish) as with the non-MMU case, so "rounding up" into the same "error".
         case PhasesLoadUnload::LoadFilamentIntoMMU:
+        case PhasesLoadUnload::MMURunoutClear:
+        case PhasesLoadUnload::MMURunoutError:
         case PhasesLoadUnload::IsColor:
         case PhasesLoadUnload::IsColorPurge:
             return ErrCode::CONNECT_FILAMENT_RUNOUT;
