@@ -216,7 +216,8 @@ void M600_execute(xyz_pos_t park_point, uint8_t target_extruder, xyze_float_t re
     BlockEStallDetection estall_blocker;
 
 #if ENABLED(CRASH_RECOVERY)
-    if (crash_s.get_state() != Crash_s::PRINTING && crash_s.get_state() != Crash_s::IDLE) {
+    if (crash_s.get_state() != Crash_s::PRINTING && crash_s.get_state() != Crash_s::IDLE
+        && marlin_vars().print_state != marlin_server::State::Resuming_ExecutingGCodeInterrupt) {
         return; // Ignore M600 if crash recovery is in progress
     }
 #endif /*ENABLED(CRASH_RECOVERY)*/

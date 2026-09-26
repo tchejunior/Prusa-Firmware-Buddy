@@ -266,15 +266,12 @@ namespace {
     /// State variables that reset with each print
     struct PrintState {
 
-        /// When print_resume is called during the pausing (or possibly other sequences), we first have to finish the sequence and then start resuming.
-        /// This flag stores that we have a resume pending and we should start executing it when we can.
-        bool resume_pending = false;
-
         // In case we were paused due to media error, we schedule an attempt to recover
         // (using the recover_media_error_backoff mechanism).
         //
         // We still allow an earlier attempt if called externally by try_recover_from_media_error.
         std::optional<uint32_t> recover_media_error_at;
+
         // Tracking exponential backoff for media error recovery retries.
         //
         // In seconds.
@@ -283,14 +280,23 @@ namespace {
         /// Position the media should be resumed to
         GCodeReaderStreamRestoreInfo media_restore_info;
 
+#if ENABLED(CRASH_RECOVERY)
+        /// Command to be executed in interrupt mode - see marlin_client::gcode_interrupt
+        GCodeLiteral gcode_interrupt_command;
+#endif
+
+        /// When print_resume is called during the pausing (or possibly other sequences), we first have to finish the sequence and then start resuming.
+        /// This flag stores that we have a resume pending and we should start executing it when we can.
+        bool resume_pending : 1 = false;
+
         /// Denotes whether a single gcode should be skipped
         /// Some pauses should cause (partial) gcode replay on resume - crash, power panic, ..., some shouldn't.
         /// This does that
-        bool skip_gcode = false;
+        bool skip_gcode : 1 = false;
 
         /// Whether file open was reported on the serial line.
         /// We cannot do this directly when calling media_prefecth start, we need to wait till we have file size estimate
-        bool file_open_reported = false;
+        bool file_open_reported : 1 = false;
     };
 
     PrintState print_state;
@@ -1042,6 +1048,7 @@ static void check_crash() {
         && ((crash_s.get_state() == Crash_s::TRIGGERED_ISR)
             || (crash_s.get_state() == Crash_s::TRIGGERED_TOOLFALL)
             || (crash_s.get_state() == Crash_s::TRIGGERED_TOOLCRASH)
+            || (crash_s.get_state() == Crash_s::TRIGGERED_GCODE_INTERRUPT)
             || (crash_s.get_state() == Crash_s::TRIGGERED_HOMEFAIL))) {
 
         // Set again to prevent race when ISR happens during this function
@@ -1153,6 +1160,33 @@ bool inject(InjectQueueRecord record) {
         return false;
     }
     return true;
+}
+
+void gcode_interrupt(GCodeLiteral gcode) {
+#if !ENABLED(CRASH_RECOVERY)
+    inject(gcode);
+
+#else
+    // In some situations we just inject the gcode
+    if (
+        // When we're not printing (or we're printing serial)
+        !crash_s.is_active() || crash_s.get_state() != Crash_s::PRINTING
+        || server.print_is_serial
+        || (server.print_state != State::Printing && server.print_state != State::Finishing_WaitIdle)
+
+        // When the currently executed gcode doesn't support partial replay
+        // This means basically all gcodes except for G0/1/2/3
+        || !(crash_s.gcode_state.recover_flags & Crash_s::RECOVER_PARTIAL_REPLAY) //
+    ) {
+        inject(gcode);
+        return;
+    }
+
+    print_state.gcode_interrupt_command = gcode;
+
+    // We're using crash recovery machinery to stop the motors, store state and such
+    Crash_s::instance().set_state(Crash_s::TRIGGERED_GCODE_INTERRUPT);
+#endif
 }
 
 static void settings_load() {
@@ -1415,6 +1449,7 @@ void serial_print_finalize(void) {
     case State::Printing:
     case State::Paused:
     case State::Resuming_Reheating:
+    case State::Resuming_ExecutingGCodeInterrupt:
     case State::Finishing_WaitIdle:
 #if HAS_TOOLCHANGER()
     case State::CrashRecovery_Tool_Pickup:
@@ -1439,6 +1474,7 @@ void print_abort(void) {
     case State::MediaErrorRecovery_BufferData:
     case State::Resuming_BufferData:
     case State::Resuming_Reheating:
+    case State::Resuming_ExecutingGCodeInterrupt:
     case State::Finishing_WaitIdle:
 #if HAS_TOOLCHANGER()
     case State::CrashRecovery_Tool_Pickup:
@@ -1471,6 +1507,7 @@ void print_exit(void) {
     case State::Printing:
     case State::Paused:
     case State::Resuming_Reheating:
+    case State::Resuming_ExecutingGCodeInterrupt:
     case State::Finishing_WaitIdle:
         // do nothing
         break;
@@ -2005,14 +2042,15 @@ static void resuming_reheating() {
     }
 
 #if ENABLED(CRASH_RECOVERY)
-    if (crash_s.get_state() == Crash_s::REPEAT_WAIT) {
-        server.print_state = State::Resuming_UnparkHead_ZE; // Skip unpark when recovering from toolcrash or homing fail
-        return;
+    // GCodeInterrupt uses crash recovery mechanism
+    // Crash recovery goes through recovering -> pause -> resuming phase
+    // So this is the right moment to enqueue and execute the interrupt gcode.
+    if (!print_state.gcode_interrupt_command.is_empty()) {
+        enqueue_gcode_printf(print_state.gcode_interrupt_command.gcode, (double)print_state.gcode_interrupt_command.parameter);
     }
-#endif /*ENABLED(CRASH_RECOVERY)*/
+#endif
 
-    unpark_head_XY();
-    server.print_state = State::Resuming_UnparkHead_XY;
+    server.print_state = State::Resuming_ExecutingGCodeInterrupt;
 }
 
 static void _server_print_loop(void) {
@@ -2347,24 +2385,49 @@ static void _server_print_loop(void) {
 #endif
         resuming_begin();
         break;
+
     case State::Resuming_Reheating:
         resuming_reheating();
         break;
+
+    case State::Resuming_ExecutingGCodeInterrupt: {
+        if (is_processing()) {
+            break;
+        }
+
+        // Clear the interrupt command AFTER it was successfully processed
+        // If there would be a nested crash during the execution, the interrupting gcode will be repeated
+#if ENABLED(CRASH_RECOVERY)
+        print_state.gcode_interrupt_command = {};
+#endif
+
+#if ENABLED(CRASH_RECOVERY)
+        if (crash_s.get_state() == Crash_s::REPEAT_WAIT) {
+            server.print_state = State::Resuming_UnparkHead_ZE; // Skip unpark when recovering from toolcrash or homing fail
+            return;
+        }
+#endif /*ENABLED(CRASH_RECOVERY)*/
+
+        unpark_head_XY();
+        server.print_state = State::Resuming_UnparkHead_XY;
+        break;
+    }
+
     case State::Resuming_UnparkHead_XY:
         if (active_extruder_fan_checks()) {
             abort_resuming = true;
         }
-        if (planner.processing()) {
+        if (is_processing()) {
             break;
         }
         unpark_head_ZE();
         server.print_state = State::Resuming_UnparkHead_ZE;
         break;
+
     case State::Resuming_UnparkHead_ZE:
         if (active_extruder_fan_checks()) {
             abort_resuming = true;
         }
-
         if (is_processing()) {
             break;
         }
@@ -2574,10 +2637,16 @@ static void _server_print_loop(void) {
         pause_print(Pause_Type::Crash);
         set_media_position(crash_s.sdpos);
 
+        const auto orig_crash_state = crash_s.get_state();
+
         endstops.enable_globally(false);
         crash_s.send_reports();
-        crash_s.count_crash();
-        if (crash_s.get_state() == Crash_s::TRIGGERED_TOOLCRASH || crash_s.get_state() == Crash_s::TRIGGERED_HOMEFAIL) {
+
+        if (orig_crash_state != Crash_s::TRIGGERED_GCODE_INTERRUPT) {
+            crash_s.count_crash();
+        }
+
+        if (orig_crash_state == Crash_s::TRIGGERED_TOOLCRASH || orig_crash_state == Crash_s::TRIGGERED_HOMEFAIL) {
             crash_s.set_state(Crash_s::REPEAT_WAIT);
         } else {
             crash_s.set_state(Crash_s::RECOVERY);
@@ -2622,6 +2691,11 @@ static void _server_print_loop(void) {
             crash_recovery_begin_axis_measure();
         }
     #endif /*ENABLED(AXIS_MEASURE)*/
+
+        else if (orig_crash_state == Crash_s::TRIGGERED_GCODE_INTERRUPT) {
+            Crash_recovery_fsm cr_fsm(SelftestSubtestState_t::running, SelftestSubtestState_t::undef);
+            fsm_create(PhasesCrashRecovery::home_gcode_interrupt, cr_fsm.Serialize());
+        }
 
         else { // All toolfalls, crashes and homing fails are handled above, only regular crash remains
             crash_recovery_begin_crash();
@@ -3374,6 +3448,9 @@ bool _process_server_valid_request(const Request &request, int client_id) {
         return enqueue_gcode_try(request.gcode);
     case Request::Type::Inject:
         inject(request.inject);
+        return true;
+    case Request::Type::GcodeInterrupt:
+        gcode_interrupt(request.gcode_interrupt);
         return true;
     case Request::Type::SetVariable:
         _server_set_var(request);

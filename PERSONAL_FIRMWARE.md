@@ -5,11 +5,13 @@ This branch starts from Prusa Firmware Buddy `v6.5.7` (`7119a302d6d0bc144c57b631
 ## MMU filament runout
 
 - FINDA loss during an active MMU print beeps once and records the active slot. Printing continues while the filament tail in the Bowden tube reaches the extruder.
-- Extruder ADC loss beeps, parks the nozzle, skips the already-impossible unload/eject, reconciles the MMU state, and loads the recorded slot directly.
+- Extruder ADC loss interrupts replayable moves immediately instead of waiting for the command buffer, beeps, parks the nozzle, skips the already-impossible unload/eject, reconciles the MMU state, and loads the recorded slot directly.
 - The recovery load keeps the normal obstruction/load-cell checks and caps forward loading motion at 3 mm/s. The temporary MMU pulley rate is restored afterward.
 - A tool change or manual filament change cannot move the selector while a runout is pending. If the ADC still sees the tail, the printer parks and asks for manual removal before recovery.
 - The selected slot survives power panic. Automatic power-panic continuation is disabled while this special recovery is pending so it cannot resume an empty print.
 - MMU startup, setup, calibration, and non-print operations retain the stock 6.5.7 FINDA behavior.
+
+The immediate interruption is backported from Prusa's BFW-4523 work in 6.8.1 (commits `3bf3b6dec`, `1c28beeae`, `cb62d613d` and pause integration from `25a71e9fe`). It saves the interrupted move through crash recovery, homes XY, performs the filament replacement, and replays the remaining move. Serial printing, inactive crash recovery, and commands without partial replay retain queued handling. FINDA remains warning-only. The port preserves the older Stop/Resume handlers, fan checks, M600 parking, and extrusion accounting.
 
 ## Custom filtration
 
@@ -45,7 +47,7 @@ Before relying on the firmware for long prints:
 3. Run the chamber fan self-test in the stock and Custom filtration modes.
 4. Confirm rear fans respond to a chamber-temperature target while fan 3 follows filtration demand.
 5. Simulate FINDA loss during a short MMU print; confirm one beep and continued printing.
-6. Let the tail leave the extruder ADC; confirm parking and direct same-slot loading without unload/eject.
+6. Let the tail leave the extruder ADC; confirm the current long move stops promptly, followed by parking and direct same-slot loading without unload/eject. After loading, check return position, completion of the interrupted move, and no extra extrusion blob.
 7. Repeat with a tool-change command arriving while the tail still reaches the ADC; confirm the selector does not move until the path is cleared.
 8. Test Stop and one controlled power interruption during recovery before using unattended.
 

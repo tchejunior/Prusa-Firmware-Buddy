@@ -234,6 +234,16 @@ void Crash_s::set_state(state_t new_state) {
         check_and_set_sdpos(queue.get_current_sdpos());
         break;
 
+    case TRIGGERED_GCODE_INTERRUPT:
+        if (state != PRINTING || !is_active()) {
+            bsod("invalid gcode interrupt transition");
+        }
+
+        toolchange_event = false;
+        axis_hit = NO_AXIS_ENUM;
+        stop_and_save();
+        break;
+
     case REPEAT_WAIT:
         if (state != PRINTING && state != TRIGGERED_TOOLCRASH && state != TRIGGERED_HOMEFAIL) {
             bsod("invalid wait transition");
@@ -244,7 +254,7 @@ void Crash_s::set_state(state_t new_state) {
 
     case RECOVERY:
         // TODO: the following checks are too broad (should check for existing state)
-        if (state != PRINTING && state != TRIGGERED_ISR && state != TRIGGERED_TOOLFALL && state != TRIGGERED_AC_FAULT) {
+        if (state != PRINTING && state != TRIGGERED_ISR && state != TRIGGERED_TOOLFALL && state != TRIGGERED_AC_FAULT && state != TRIGGERED_GCODE_INTERRUPT) {
             bsod("invalid recovery transition");
         }
         resume_movement();

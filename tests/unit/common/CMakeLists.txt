@@ -133,3 +133,9 @@ add_catch_test(json_tests)
 add_catch_test(path_utils_tests)
 add_catch_test(selftest_test_data_serialization_tests)
 add_catch_test(exponential_backoff_tests)
+
+add_executable(marlin_interrupt_state_tests marlin_interrupt_state_tests.cpp)
+target_include_directories(
+  marlin_interrupt_state_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_BINARY_DIR}/include
+  )
+add_catch_test(marlin_interrupt_state_tests)

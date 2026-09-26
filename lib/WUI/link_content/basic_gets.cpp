@@ -90,6 +90,7 @@ JsonResult get_printer(size_t resume_point, JsonOutput &output) {
     case State::Resuming_BufferData:
     case State::Resuming_Begin:
     case State::Resuming_Reheating:
+    case State::Resuming_ExecutingGCodeInterrupt:
     case State::Resuming_UnparkHead_XY:
     case State::Resuming_UnparkHead_ZE:
     case State::PowerPanic_Resume:
@@ -299,6 +300,7 @@ JsonResult get_job_octoprint(size_t resume_point, JsonOutput &output) {
     case State::Resuming_BufferData:
     case State::Resuming_Begin:
     case State::Resuming_Reheating:
+    case State::Resuming_ExecutingGCodeInterrupt:
     case State::Resuming_UnparkHead_XY:
     case State::Resuming_UnparkHead_ZE:
     case State::PowerPanic_Resume:

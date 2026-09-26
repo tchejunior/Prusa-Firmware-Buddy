@@ -6,6 +6,7 @@
 #include <common/fsm_base_types.hpp>
 #include "window_wizard_icon.hpp"
 #include "radio_button.hpp"
+#include <gui/standard_frame/frame_wait.hpp>
 
 class ScreenCrashRecovery;
 
@@ -88,6 +89,14 @@ struct WinsHomeFail {
     WinsHomeFail(ScreenCrashRecovery &screen);
 };
 
+class WinsGCodeInterrupt : public window_frame_t {
+public:
+    WinsGCodeInterrupt(ScreenCrashRecovery &screen);
+
+private:
+    FrameWait frame_;
+};
+
 struct WinsToolRecovery {
     window_text_t text_long;
     window_text_t text_careful;
@@ -104,7 +113,7 @@ using WinVariant = std::variant<
 #if HAS_TOOLCHANGER()
     WinsToolRecovery,
 #endif
-    WinsCheckAxis, WinsHome, WinsAxisNok, WinsRepeatedCrash, WinsHomeFail>;
+    WinsCheckAxis, WinsHome, WinsAxisNok, WinsRepeatedCrash, WinsHomeFail, WinsGCodeInterrupt>;
 
 } // namespace crash_recovery
 
@@ -113,8 +122,6 @@ protected:
     window_header_t header;
     StatusFooter footer;
     crash_recovery::WinVariant window;
-
-    static ScreenCrashRecovery *ths; // to be accessible in dialog handler
 
     virtual void windowEvent(window_t * /*sender*/, GUI_event_t event, void *param) override;
 
