@@ -5,13 +5,11 @@ This branch starts from Prusa Firmware Buddy `v6.5.7` (`7119a302d6d0bc144c57b631
 ## MMU filament runout
 
 - FINDA loss during an active MMU print beeps once and records the active slot. Printing continues while the filament tail in the Bowden tube reaches the extruder.
-- Extruder ADC loss interrupts replayable moves immediately instead of waiting for the command buffer, beeps, parks the nozzle, skips the already-impossible unload/eject, reconciles the MMU state, and loads the recorded slot directly.
+- Extruder ADC loss beeps, parks the nozzle, skips the already-impossible unload/eject, reconciles the MMU state, and loads the recorded slot directly.
 - The recovery load keeps the normal obstruction/load-cell checks and caps forward loading motion at 3 mm/s. The temporary MMU pulley rate is restored afterward.
 - A tool change or manual filament change cannot move the selector while a runout is pending. If the ADC still sees the tail, the printer parks and asks for manual removal before recovery.
 - The selected slot survives power panic. Automatic power-panic continuation is disabled while this special recovery is pending so it cannot resume an empty print.
 - MMU startup, setup, calibration, and non-print operations retain the stock 6.5.7 FINDA behavior.
-
-The immediate interruption is backported from Prusa's BFW-4523 work in 6.8.1 (commits `3bf3b6dec`, `1c28beeae`, `cb62d613d` and pause integration from `25a71e9fe`). It saves the interrupted move through crash recovery, homes XY, performs the filament replacement, and replays the remaining move. Serial printing, inactive crash recovery, and commands without partial replay retain queued handling. FINDA remains warning-only. The port preserves the older Stop/Resume handlers, fan checks, M600 parking, and extrusion accounting.
 
 ## Custom filtration
 
@@ -22,21 +20,13 @@ Select **Custom filtration** as the chamber filtration backend when fan 3 is the
 - emergency temperature overrides still apply;
 - chamber fan self-test includes all three fans only in this mode.
 
-## Build
+## BUILD COMMAND
 
-From PowerShell in the repository root:
+We have to use this command, as it generates the firmware in a way that PrusaConnect accepts the printer, and do not display the error message `The current printer firmware does not support binary gcode`
 
-```powershell
-.\utils\build_custom_coreone.ps1
+```bash
+C:\Users\mp4864\AppData\Local\Python\pythoncore-3.14-64\python.exe utils/build.py --preset coreone --final
 ```
-
-The helper uses the repository's pinned toolchain and builds the CORE One release image with `--bootloader yes`. Its primary output is:
-
-```text
-build/coreone_release_boot/firmware.bbf
-```
-
-Copy the reviewed artifact from `build/personal-artifacts/coreone-6.5.7/` to a USB drive and install it through the printer's normal USB firmware-update procedure.
 
 ## Hardware acceptance checks
 
@@ -47,7 +37,7 @@ Before relying on the firmware for long prints:
 3. Run the chamber fan self-test in the stock and Custom filtration modes.
 4. Confirm rear fans respond to a chamber-temperature target while fan 3 follows filtration demand.
 5. Simulate FINDA loss during a short MMU print; confirm one beep and continued printing.
-6. Let the tail leave the extruder ADC; confirm the current long move stops promptly, followed by parking and direct same-slot loading without unload/eject. After loading, check return position, completion of the interrupted move, and no extra extrusion blob.
+6. Let the tail leave the extruder ADC; confirm parking and direct same-slot loading without unload/eject.
 7. Repeat with a tool-change command arriving while the tail still reaches the ADC; confirm the selector does not move until the path is cleared.
 8. Test Stop and one controlled power interruption during recovery before using unattended.
 
@@ -63,11 +53,3 @@ git push -u origin codex/personal-coreone-<version>
 ```
 
 Build and repeat the hardware acceptance checks after every port. Do not merge this branch into an upstream checkout or open an upstream pull request.
-
-## BUILD COMMAND
-
-We have to use this command, as it generates the firmware in a way that PrusaConnect accepts the printer, and do not display the error message `The current printer firmware does not support binary gcode`
-
-```bash
-C:\Users\mp4864\AppData\Local\Python\pythoncore-3.14-64\python.exe utils/build.py --preset coreone --final
-```

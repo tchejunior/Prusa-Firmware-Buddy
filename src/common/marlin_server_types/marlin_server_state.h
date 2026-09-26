@@ -29,7 +29,6 @@ enum class State {
     Resuming_BufferData,
     Resuming_Begin,
     Resuming_Reheating,
-    Resuming_ExecutingGCodeInterrupt,
     Resuming_UnparkHead_XY,
     Resuming_UnparkHead_ZE,
     Aborting_Begin,
@@ -74,7 +73,7 @@ inline bool is_pausing_state(State state) {
 }
 
 inline bool is_resuming_state(State state) {
-    return (state == State::Resuming_BufferData) || (state == State::Resuming_Begin) || (state == State::Resuming_Reheating) || (state == State::Resuming_ExecutingGCodeInterrupt) || (state == State::Resuming_UnparkHead_XY) || (state == State::Resuming_UnparkHead_ZE) || (state == State::MediaErrorRecovery_BufferData);
+    return (state == State::Resuming_BufferData) || (state == State::Resuming_Begin) || (state == State::Resuming_Reheating) || (state == State::Resuming_UnparkHead_XY) || (state == State::Resuming_UnparkHead_ZE) || (state == State::MediaErrorRecovery_BufferData);
 }
 
 inline bool is_extended_paused_state(State state) {
@@ -88,7 +87,6 @@ inline bool is_extended_paused_state(State state) {
     case State::MediaErrorRecovery_BufferData:
     case State::Resuming_Begin:
     case State::Resuming_Reheating:
-    case State::Resuming_ExecutingGCodeInterrupt:
     case State::Resuming_UnparkHead_XY:
     case State::Resuming_UnparkHead_ZE:
         return true;

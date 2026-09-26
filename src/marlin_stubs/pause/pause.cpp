@@ -7,7 +7,6 @@
  */
 
 #include "pause_stubbed.hpp"
-#include <gcode/filament_change_resume.hpp>
 
 #include "Marlin/src/Marlin.h"
 #include "Marlin/src/gcode/gcode.h"
@@ -1542,8 +1541,7 @@ void Pause::filament_change(const pause::Settings &settings_, bool is_filament_s
     thermalManager.set_fans_paused(true);
 #endif
 
-    const bool recovering_mmu_runout = settings.skip_unload;
-    const bool completed = invoke_loop();
+    invoke_loop();
 
 #if ADVANCED_PAUSE_RESUME_PRIME != 0
     do_pause_e_move(ADVANCED_PAUSE_RESUME_PRIME, feedRate_t(ADVANCED_PAUSE_PURGE_FEEDRATE));
@@ -1551,15 +1549,7 @@ void Pause::filament_change(const pause::Settings &settings_, bool is_filament_s
 
     // Now all extrusion positions are resumed and ready to be confirmed
     // Set extruder to saved position
-    const bool interrupted = marlin_vars().print_state == marlin_server::State::Resuming_ExecutingGCodeInterrupt;
-    destination.e = settings.resume_pos.e;
-    // A replacement has consumed the server's pre-load retraction. Only the
-    // final post-purge retraction remains to be undone at the print position.
-    const bool replaced = interrupted && recovering_mmu_runout && completed
-        && !planner.draining() && !marlin_server::aborting_or_aborted();
-    current_position.e = marlin_server::filament_change_resume_e(settings.resume_pos.e,
-        marlin_server::get_resume_data()->pos.e, settings.retract, interrupted, replaced);
-    planner.set_e_position_mm(current_position.e);
+    planner.set_e_position_mm((destination.e = current_position.e = settings.resume_pos.e));
 
     --did_pause_print;
 
@@ -1776,16 +1766,6 @@ Pause::FSM_HolderLoadUnload::~FSM_HolderLoadUnload() {
         return;
     }
 
-    if (marlin_vars().print_state == marlin_server::State::Resuming_ExecutingGCodeInterrupt) {
-        // Restore temperature even though the server owns unparking. Preserve
-        // the final M600 retraction for the server's E-axis resume movement.
-        if (!pause.ensureSafeTemperatureNotifyProgress() && !planner.draining()) {
-            marlin_server::print_abort();
-            planner.quick_stop();
-        }
-        pause.clr_mode();
-        return;
-    }
     const float min_layer_h = 0.05f;
     // do not unpark and wait for temp if not homed or z park len is 0
     if (!axes_need_homing() && pause.settings.resume_pos.z != NAN && std::abs(current_position.z - pause.settings.resume_pos.z) >= min_layer_h && (marlin_client::is_printing() || marlin_client::is_paused())) {

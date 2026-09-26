@@ -249,7 +249,7 @@ void FilamentSensors::process_events() {
     } else if (action == MmuRunout::Action::pause) {
         m600_sent = true;
         Sound_Play(eSOUND_TYPE::SingleBeep);
-        marlin_client::gcode_interrupt(GCodeLiteral { .gcode = "M600 W" });
+        marlin_client::inject("M600 W");
         log_info(FSensor, "Extruder ADC runout: injected direct reload");
     }
 

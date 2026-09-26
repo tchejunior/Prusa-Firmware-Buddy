@@ -20,12 +20,8 @@ struct GCodeFilename {
  * NaN is representing empty parameter.
  */
 struct GCodeLiteral {
-    ConstexprString gcode = nullptr;
+    ConstexprString gcode;
     float parameter = std::numeric_limits<float>::quiet_NaN();
-
-    inline bool is_empty() const {
-        return gcode == nullptr;
-    }
 };
 
 struct GCodeMacroButton {

@@ -16,7 +16,6 @@ struct Request {
         EventMask,
         Gcode,
         Inject,
-        GcodeInterrupt,
         SetVariable,
         Babystep,
 #if HAS_SELFTEST()
@@ -45,7 +44,6 @@ struct Request {
         } test_start; // Type::TestStart
         char gcode[MARLIN_MAX_REQUEST + 1]; // Type::Gcode
         InjectQueueRecord inject; // Type::Inject
-        GCodeLiteral gcode_interrupt; // Type::GcodeInterrupt
         float babystep; // Type::Babystep
         struct {
             marlin_server::PreviewSkipIfAble skip_preview;

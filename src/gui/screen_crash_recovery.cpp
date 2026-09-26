@@ -256,11 +256,6 @@ WinsToolRecovery::WinsToolRecovery(ScreenCrashRecovery &screen)
 }
     #endif /*HAS_TOOLCHANGER()*/
 
-WinsGCodeInterrupt::WinsGCodeInterrupt(ScreenCrashRecovery &screen)
-    : window_frame_t(&screen, GuiDefaults::RectScreenBody)
-    , frame_(this, _("Homing")) {
-}
-
 ScreenCrashRecovery::ScreenCrashRecovery()
     : screen_t()
     , header(this)
@@ -380,11 +375,6 @@ void ScreenCrashRecovery::change_phase(PhasesCrashRecovery new_phase) {
 
     case PhasesCrashRecovery::home:
         window.emplace<WinsHome>(*this);
-        break;
-
-    case PhasesCrashRecovery::home_gcode_interrupt:
-        header.SetText({});
-        window.emplace<WinsGCodeInterrupt>(*this);
         break;
 
     case PhasesCrashRecovery::axis_NOK:
