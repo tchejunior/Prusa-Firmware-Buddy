@@ -324,16 +324,6 @@ def switch_to_venv_if_needed():
         print(
             'You can disable this by setting the BUDDY_NO_VIRTUALENV=1 env. variable.',
             file=sys.stderr)
-        if is_windows:
-            # os.execv does not reliably keep the replacement process attached
-            # to the invoking terminal on Windows. Propagate its exit status.
-            environment = os.environ.copy()
-            environment['PATH'] = str(
-                venv_bin_dir) + os.pathsep + environment.get('PATH', '')
-            result = subprocess.run([str(venv_bin_dir / 'python')] + sys.argv,
-                                    env=environment,
-                                    check=False)
-            sys.exit(result.returncode)
         os.execv(str(venv_bin_dir / 'python'),
                  [str(venv_bin_dir / 'python')] + sys.argv)
 
@@ -341,23 +331,7 @@ def switch_to_venv_if_needed():
 def prepare_venv_if_needed(include_integration):
     if venv_dir.exists():
         return
-    if is_windows and sys.version_info >= (3, 13):
-        # NumPy 1.26.4 is pinned by this firmware and has no wheel for the
-        # newer interpreter used to launch the build on this machine.
-        compatible_python = next(
-            (shutil.which(name)
-             for name in ('python3.11', 'python3.12') if shutil.which(name)),
-            None)
-        if compatible_python is None:
-            raise RuntimeError(
-                'Install Python 3.11 or 3.12 to build this firmware on Windows.'
-            )
-        subprocess.run(
-            [compatible_python, '-m', 'venv', '--prompt=buddy',
-             str(venv_dir)],
-            check=True)
-    else:
-        venv.create(venv_dir, with_pip=True, prompt='buddy')
+    venv.create(venv_dir, with_pip=True, prompt='buddy')
     install_pip_packages(include_integration)
 
 
